@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import pyarrow.dataset as ds
 import plotly.graph_objects as go
-from datetime import timedelta
+from datetime import timedelta, datetime
 import adlfs
 
 # =========================================================
@@ -23,7 +23,7 @@ DEFAULT_SIGNALS = ["EEC1_Speed","Verbruik_g_per_km","GPS_speed"]
 PARQUET_URL = st.secrets["AZURE_BLOB_SAS_URL"]
 
 # =========================================================
-# AZURE FILESYSTEM
+# AZURE DATASET
 # =========================================================
 
 @st.cache_resource
@@ -70,13 +70,11 @@ if missing:
     st.error(f"Ontbrekende kolommen: {missing}")
     st.stop()
 
-
 def is_numeric(pa_type):
 
     s = str(pa_type).lower()
 
     return ("int" in s) or ("float" in s) or ("double" in s) or ("bool" in s)
-
 
 signals = [
     c for c in col_names
@@ -86,7 +84,7 @@ signals = [
 ]
 
 # =========================================================
-# APP START
+# APP
 # =========================================================
 
 st.set_page_config(layout="wide")
@@ -126,21 +124,76 @@ def preview_sample(signal):
 
 preview_df = preview_sample(preview_signal)
 
-# =========================================================
-# TIJDSELECTIE
-# =========================================================
-
 min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
+
+# =========================================================
+# SESSION STATE INIT
+# =========================================================
+
+if "start_dt" not in st.session_state:
+
+    st.session_state.start_dt = min_time
+    st.session_state.end_dt = min_time + timedelta(hours=1)
+
+# =========================================================
+# DATUM + TIJD SELECTIE
+# =========================================================
+
+st.subheader("Tijdselectie")
+
+c1, c2 = st.columns(2)
+
+with c1:
+
+    start_date = st.date_input(
+        "Start datum",
+        value=st.session_state.start_dt.date(),
+        key="start_date"
+    )
+
+    start_time = st.time_input(
+        "Start tijd",
+        value=st.session_state.start_dt.time(),
+        step=60,
+        key="start_time"
+    )
+
+with c2:
+
+    end_date = st.date_input(
+        "Eind datum",
+        value=st.session_state.end_dt.date(),
+        key="end_date"
+    )
+
+    end_time = st.time_input(
+        "Eind tijd",
+        value=st.session_state.end_dt.time(),
+        step=60,
+        key="end_time"
+    )
+
+# update session state vanuit dropdowns
+
+st.session_state.start_dt = datetime.combine(start_date, start_time)
+st.session_state.end_dt = datetime.combine(end_date, end_time)
+
+# =========================================================
+# SLIDER
+# =========================================================
 
 start_dt, end_dt = st.slider(
     "Tijdslot",
     min_value=min_time,
     max_value=max_time,
-    value=(min_time, min_time + timedelta(hours=1)),
+    value=(st.session_state.start_dt, st.session_state.end_dt),
     step=TIME_STEP,
     key="time_slider"
 )
+
+st.session_state.start_dt = start_dt
+st.session_state.end_dt = end_dt
 
 # =========================================================
 # PREVIEW FIGUUR
