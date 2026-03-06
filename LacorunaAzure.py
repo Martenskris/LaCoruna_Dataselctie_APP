@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import pyarrow.dataset as ds
+import pyarrow.fs as fs
 import plotly.graph_objects as go
 from datetime import timedelta
 
@@ -20,13 +21,19 @@ TIME_STEP = timedelta(minutes=1)
 PARQUET_URL = st.secrets["AZURE_BLOB_SAS_URL"]
 
 # =========================
-# DATASET
+# DATASET CONNECTIE
 # =========================
 
 @st.cache_resource
 def get_dataset():
 
-    dataset = ds.dataset(PARQUET_URL, format="parquet")
+    http_fs = fs.HttpFileSystem()
+
+    dataset = ds.dataset(
+        PARQUET_URL,
+        filesystem=http_fs,
+        format="parquet"
+    )
 
     return dataset
 
@@ -60,11 +67,13 @@ if missing:
     st.error(f"Ontbrekende kolommen: {missing}")
     st.stop()
 
+
 def is_numeric(pa_type):
 
     s = str(pa_type).lower()
 
     return ("int" in s) or ("float" in s) or ("double" in s) or ("bool" in s)
+
 
 signals = [
 
@@ -72,16 +81,22 @@ signals = [
     if c not in required
     and c not in EXCLUDE
     and is_numeric(col_types[c])
+
 ]
 
 # =========================
-# PREVIEW
+# APP
 # =========================
+
+st.set_page_config(layout="wide")
 
 st.title("Geo + signalen")
 
-preview_signal = st.selectbox(
+# =========================
+# PREVIEW SIGNAAL
+# =========================
 
+preview_signal = st.selectbox(
     "Preview signaal",
     signals,
     index=0
@@ -100,7 +115,7 @@ def preview_sample(signal):
 
     if len(df) > MAX_POINTS:
 
-        idx = np.linspace(0,len(df)-1,MAX_POINTS).astype(int)
+        idx = np.linspace(0, len(df)-1, MAX_POINTS).astype(int)
 
         df = df.iloc[idx]
 
@@ -112,7 +127,6 @@ preview_df = preview_sample(preview_signal)
 fig = go.Figure()
 
 fig.add_trace(
-
     go.Scatter(
         x=preview_df["Timestamp"],
         y=preview_df[preview_signal],
@@ -132,15 +146,10 @@ min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 start_dt, end_dt = st.slider(
-
     "Tijdslot",
-
     min_value=min_time,
-
     max_value=max_time,
-
     value=(min_time, min_time + timedelta(hours=1)),
-
     step=TIME_STEP
 )
 
@@ -151,13 +160,9 @@ start_dt, end_dt = st.slider(
 st.subheader("Aantal grafieken")
 
 n_signals = st.slider(
-
     "Aantal signalen",
-
     1,
-
     min(12, len(signals)),
-
     3
 )
 
@@ -174,13 +179,9 @@ for i in range(n_signals):
     default = defaults[i] if i < len(defaults) and defaults[i] in signals else signals[i]
 
     s = st.selectbox(
-
         f"Signaal {i+1}",
-
         signals,
-
         index=signals.index(default) if default in signals else 0,
-
         key=f"sig{i}"
     )
 
@@ -193,18 +194,15 @@ for i in range(n_signals):
 cols = ["Timestamp", LAT_COL, LON_COL] + selected
 
 filter_expr = (
-
     (ds.field("Timestamp") >= pd.Timestamp(start_dt)) &
     (ds.field("Timestamp") <= pd.Timestamp(end_dt))
 )
 
 @st.cache_data
-def load_filtered(cols,start,end):
+def load_filtered(columns, start, end):
 
     table = dataset.to_table(
-
-        columns=cols,
-
+        columns=columns,
         filter=filter_expr
     )
 
@@ -217,7 +215,7 @@ def load_filtered(cols,start,end):
     return df
 
 
-df = load_filtered(cols,start_dt,end_dt)
+df = load_filtered(cols, start_dt, end_dt)
 
 if df.empty:
 
@@ -236,7 +234,6 @@ for s in selected:
     fig = go.Figure()
 
     fig.add_trace(
-
         go.Scatter(
             x=df["Timestamp"],
             y=df[s],
@@ -245,9 +242,7 @@ for s in selected:
     )
 
     fig.update_layout(
-
         title=s,
-
         height=300
     )
 
@@ -262,12 +257,8 @@ st.subheader("Download")
 csv = df.to_csv(index=False).encode()
 
 st.download_button(
-
     "Download CSV",
-
     csv,
-
     file_name="export.csv",
-
     mime="text/csv"
 )
