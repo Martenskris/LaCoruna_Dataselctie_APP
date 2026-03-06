@@ -92,7 +92,7 @@ st.set_page_config(layout="wide")
 st.title("Geo + signalen")
 
 # =========================================================
-# PREVIEW SIGNAAL
+# PREVIEW
 # =========================================================
 
 preview_signal = st.selectbox(
@@ -128,13 +128,15 @@ min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 # =========================================================
-# SESSION STATE INIT
+# SESSION STATE
 # =========================================================
 
 if "start_dt" not in st.session_state:
-
     st.session_state.start_dt = min_time
     st.session_state.end_dt = min_time + timedelta(hours=1)
+
+if "data_loaded" not in st.session_state:
+    st.session_state.data_loaded = False
 
 # =========================================================
 # CALLBACKS
@@ -154,13 +156,12 @@ def update_from_inputs():
 
     st.session_state.start_dt = start
     st.session_state.end_dt = end
-
-    st.session_state.time_slider = (start, end)
+    st.session_state.time_slider = (start,end)
 
 
 def update_from_slider():
 
-    start, end = st.session_state.time_slider
+    start,end = st.session_state.time_slider
 
     st.session_state.start_dt = start
     st.session_state.end_dt = end
@@ -177,7 +178,7 @@ def update_from_slider():
 
 st.subheader("Tijdselectie")
 
-c1, c2 = st.columns(2)
+c1,c2 = st.columns(2)
 
 with c1:
 
@@ -221,7 +222,7 @@ st.slider(
     "Tijdslot",
     min_value=min_time,
     max_value=max_time,
-    value=(st.session_state.start_dt, st.session_state.end_dt),
+    value=(st.session_state.start_dt,st.session_state.end_dt),
     step=TIME_STEP,
     key="time_slider",
     on_change=update_from_slider
@@ -240,8 +241,7 @@ fig.add_trace(
     go.Scatter(
         x=preview_df["Timestamp"],
         y=preview_df[preview_signal],
-        mode="lines",
-        line=dict(width=2)
+        mode="lines"
     )
 )
 
@@ -255,124 +255,97 @@ fig.add_vrect(
 fig.add_vline(x=start_dt)
 fig.add_vline(x=end_dt)
 
-fig.update_layout(
-    height=320,
-    margin=dict(l=0,r=0,t=40,b=0),
-    hovermode="x"
-)
+fig.update_layout(height=320)
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig,use_container_width=True)
 
 # =========================================================
-# AANTAL SIGNALEN
+# LOAD BUTTON
 # =========================================================
 
-st.subheader("Aantal grafieken")
+if st.button("Laad geselecteerd tijdslot", key="load_button"):
 
-n_signals = st.slider(
-    "Aantal signalen",
-    1,
-    min(12, len(signals)),
-    3,
-    key="num_signals"
-)
+    st.session_state.data_loaded = True
 
 # =========================================================
-# SIGNAAL SELECTIE
+# DATA PAS LADEN NA BUTTON
 # =========================================================
 
-selected = []
+if st.session_state.data_loaded:
 
-for i in range(n_signals):
+    st.subheader("Aantal grafieken")
 
-    if i < len(DEFAULT_SIGNALS) and DEFAULT_SIGNALS[i] in signals:
-        default = DEFAULT_SIGNALS[i]
-    else:
-        default = signals[i]
-
-    s = st.selectbox(
-        f"Signaal {i+1}",
-        signals,
-        index=signals.index(default),
-        key=f"signal_select_{i}"
+    n_signals = st.slider(
+        "Aantal signalen",
+        1,
+        min(12,len(signals)),
+        3,
+        key="num_signals"
     )
 
-    selected.append(s)
+    selected=[]
 
-# =========================================================
-# DATA LADEN
-# =========================================================
+    for i in range(n_signals):
 
-cols = ["Timestamp", LAT_COL, LON_COL] + selected
+        if i < len(DEFAULT_SIGNALS) and DEFAULT_SIGNALS[i] in signals:
+            default=DEFAULT_SIGNALS[i]
+        else:
+            default=signals[i]
 
-filter_expr = (
-    (ds.field("Timestamp") >= pd.Timestamp(start_dt)) &
-    (ds.field("Timestamp") <= pd.Timestamp(end_dt))
-)
-
-@st.cache_data
-def load_filtered(cols, start, end):
-
-    table = dataset.to_table(
-        columns=cols,
-        filter=filter_expr
-    )
-
-    df = table.to_pandas()
-
-    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-
-    df = df.sort_values("Timestamp")
-
-    return df
-
-
-df = load_filtered(cols, start_dt, end_dt)
-
-if df.empty:
-
-    st.warning("Geen data in geselecteerd tijdslot")
-
-    st.stop()
-
-# =========================================================
-# GRAFIEKEN
-# =========================================================
-
-st.subheader("Grafieken")
-
-for s in selected:
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=df["Timestamp"],
-            y=df[s],
-            mode="lines"
+        s=st.selectbox(
+            f"Signaal {i+1}",
+            signals,
+            index=signals.index(default),
+            key=f"signal_{i}"
         )
+
+        selected.append(s)
+
+    cols=["Timestamp",LAT_COL,LON_COL]+selected
+
+    filter_expr=(
+        (ds.field("Timestamp")>=pd.Timestamp(start_dt))&
+        (ds.field("Timestamp")<=pd.Timestamp(end_dt))
     )
 
-    fig.update_layout(
-        title=s,
-        height=300,
-        margin=dict(l=0,r=0,t=40,b=0)
+    table=dataset.to_table(columns=cols,filter=filter_expr)
+
+    df=table.to_pandas()
+
+    df["Timestamp"]=pd.to_datetime(df["Timestamp"])
+
+    df=df.sort_values("Timestamp")
+
+    if df.empty:
+        st.warning("Geen data in geselecteerd tijdslot")
+        st.stop()
+
+    st.subheader("Grafieken")
+
+    for s in selected:
+
+        fig=go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=df["Timestamp"],
+                y=df[s],
+                mode="lines"
+            )
+        )
+
+        fig.update_layout(title=s,height=300)
+
+        st.plotly_chart(fig,use_container_width=True)
+
+    st.subheader("Download")
+
+    csv=df.to_csv(index=False).encode()
+
+    st.download_button(
+        "Download CSV",
+        csv,
+        file_name="export.csv",
+        mime="text/csv",
+        key="download_csv"
     )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# =========================================================
-# DOWNLOAD
-# =========================================================
-
-st.subheader("Download")
-
-csv = df.to_csv(index=False).encode()
-
-st.download_button(
-    "Download CSV",
-    csv,
-    file_name="export.csv",
-    mime="text/csv",
-    key="download_csv"
-)
