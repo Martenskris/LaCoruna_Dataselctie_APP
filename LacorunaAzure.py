@@ -137,20 +137,75 @@ def preview_sample(signal):
 
 preview_df = preview_sample(preview_signal)
 
-fig = go.Figure()
 
-fig.add_trace(
-    go.Scatter(
-        x=preview_df["Timestamp"],
-        y=preview_df[preview_signal],
-        mode="lines"
-    )
+# =========================
+# TIJDSELECTIE
+# =========================
+
+min_time = preview_df["Timestamp"].min().to_pydatetime()
+max_time = preview_df["Timestamp"].max().to_pydatetime()
+
+start_dt, end_dt = st.slider(
+    "Tijdslot",
+    min_value=min_time,
+    max_value=max_time,
+    value=(min_time, min_time + timedelta(hours=1)),
+    step=TIME_STEP
 )
 
-fig.update_layout(height=300)
 
-st.plotly_chart(fig, use_container_width=True)
+# =========================
+# PREVIEW FIGUUR MET TIJDZONE
+# =========================
 
+def make_preview_figure(df, signal, start_dt, end_dt):
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["Timestamp"],
+            y=df[signal],
+            mode="lines",
+            line=dict(width=2)
+        )
+    )
+
+    # grijze zone
+    fig.add_vrect(
+        x0=start_dt,
+        x1=end_dt,
+        fillcolor="rgba(0,0,0,0.15)",
+        line_width=0,
+        layer="below"
+    )
+
+    # beginlijn
+    fig.add_vline(
+        x=start_dt,
+        line_width=2
+    )
+
+    # eindlijn
+    fig.add_vline(
+        x=end_dt,
+        line_width=2
+    )
+
+    fig.update_layout(
+        title=f"Preview: {signal}",
+        height=320,
+        margin=dict(l=0, r=0, t=40, b=0),
+        hovermode="x"
+    )
+
+    return fig
+
+
+st.plotly_chart(
+    make_preview_figure(preview_df, preview_signal, start_dt, end_dt),
+    use_container_width=True
+)
 # =========================
 # TIJDSELECTIE
 # =========================
@@ -275,3 +330,4 @@ st.download_button(
     file_name="export.csv",
     mime="text/csv"
 )
+
