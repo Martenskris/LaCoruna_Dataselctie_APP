@@ -38,9 +38,7 @@ def get_dataset():
         sas_token=sas_token
     )
 
-    dataset = ds.dataset(path, filesystem=fs, format="parquet")
-
-    return dataset
+    return ds.dataset(path, filesystem=fs, format="parquet")
 
 
 dataset = get_dataset()
@@ -115,7 +113,7 @@ def preview_sample(signal):
 
     if len(df) > MAX_POINTS:
 
-        idx = np.linspace(0, len(df)-1, MAX_POINTS).astype(int)
+        idx = np.linspace(0,len(df)-1,MAX_POINTS).astype(int)
 
         df = df.iloc[idx]
 
@@ -156,6 +154,7 @@ def update_from_inputs():
 
     st.session_state.start_dt = start
     st.session_state.end_dt = end
+
     st.session_state.time_slider = (start,end)
 
 
@@ -173,7 +172,7 @@ def update_from_slider():
     st.session_state.end_time = end.time()
 
 # =========================================================
-# DATUM + TIJD SELECTIE
+# TIJDSELECTIE
 # =========================================================
 
 st.subheader("Tijdselectie")
@@ -260,11 +259,46 @@ fig.update_layout(height=320)
 st.plotly_chart(fig,use_container_width=True)
 
 # =========================================================
+# AANTAL SIGNALEN
+# =========================================================
+
+st.subheader("Aantal grafieken")
+
+n_signals = st.slider(
+    "Aantal signalen",
+    1,
+    min(12,len(signals)),
+    3,
+    key="num_signals"
+)
+
+# =========================================================
+# SIGNAAL SELECTIE
+# =========================================================
+
+selected=[]
+
+for i in range(n_signals):
+
+    if i < len(DEFAULT_SIGNALS) and DEFAULT_SIGNALS[i] in signals:
+        default=DEFAULT_SIGNALS[i]
+    else:
+        default=signals[i]
+
+    s=st.selectbox(
+        f"Signaal {i+1}",
+        signals,
+        index=signals.index(default),
+        key=f"signal_select_{i}"
+    )
+
+    selected.append(s)
+
+# =========================================================
 # LOAD BUTTON
 # =========================================================
 
 if st.button("Laad geselecteerd tijdslot", key="load_button"):
-
     st.session_state.data_loaded = True
 
 # =========================================================
@@ -272,34 +306,6 @@ if st.button("Laad geselecteerd tijdslot", key="load_button"):
 # =========================================================
 
 if st.session_state.data_loaded:
-
-    st.subheader("Aantal grafieken")
-
-    n_signals = st.slider(
-        "Aantal signalen",
-        1,
-        min(12,len(signals)),
-        3,
-        key="num_signals"
-    )
-
-    selected=[]
-
-    for i in range(n_signals):
-
-        if i < len(DEFAULT_SIGNALS) and DEFAULT_SIGNALS[i] in signals:
-            default=DEFAULT_SIGNALS[i]
-        else:
-            default=signals[i]
-
-        s=st.selectbox(
-            f"Signaal {i+1}",
-            signals,
-            index=signals.index(default),
-            key=f"signal_{i}"
-        )
-
-        selected.append(s)
 
     cols=["Timestamp",LAT_COL,LON_COL]+selected
 
@@ -346,6 +352,5 @@ if st.session_state.data_loaded:
         "Download CSV",
         csv,
         file_name="export.csv",
-        mime="text/csv",
-        key="download_csv"
+        mime="text/csv"
     )
