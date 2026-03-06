@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import pyarrow.dataset as ds
-import pyarrow.fs as fs
 import plotly.graph_objects as go
 from datetime import timedelta
+import adlfs
 
 # =========================
 # CONFIG
@@ -21,17 +21,30 @@ TIME_STEP = timedelta(minutes=1)
 PARQUET_URL = st.secrets["AZURE_BLOB_SAS_URL"]
 
 # =========================
-# DATASET CONNECTIE
+# AZURE FILESYSTEM
 # =========================
+
+@st.cache_resource
+def get_filesystem():
+
+    fs = adlfs.AzureBlobFileSystem(
+        account_name=PARQUET_URL.split(".")[0].split("//")[1],
+        sas_token=PARQUET_URL.split("?")[1]
+    )
+
+    return fs
+
 
 @st.cache_resource
 def get_dataset():
 
-    http_fs = fs.HttpFileSystem()
+    fs = get_filesystem()
+
+    path = PARQUET_URL.split(".net/")[1].split("?")[0]
 
     dataset = ds.dataset(
-        PARQUET_URL,
-        filesystem=http_fs,
+        path,
+        filesystem=fs,
         format="parquet"
     )
 
@@ -81,11 +94,10 @@ signals = [
     if c not in required
     and c not in EXCLUDE
     and is_numeric(col_types[c])
-
 ]
 
 # =========================
-# APP
+# UI
 # =========================
 
 st.set_page_config(layout="wide")
@@ -93,7 +105,7 @@ st.set_page_config(layout="wide")
 st.title("Geo + signalen")
 
 # =========================
-# PREVIEW SIGNAAL
+# PREVIEW
 # =========================
 
 preview_signal = st.selectbox(
@@ -101,6 +113,7 @@ preview_signal = st.selectbox(
     signals,
     index=0
 )
+
 
 @st.cache_data
 def preview_sample(signal):
@@ -188,7 +201,7 @@ for i in range(n_signals):
     selected.append(s)
 
 # =========================
-# DATA FILTEREN
+# DATA FILTER
 # =========================
 
 cols = ["Timestamp", LAT_COL, LON_COL] + selected
@@ -199,10 +212,10 @@ filter_expr = (
 )
 
 @st.cache_data
-def load_filtered(columns, start, end):
+def load_filtered():
 
     table = dataset.to_table(
-        columns=columns,
+        columns=cols,
         filter=filter_expr
     )
 
@@ -215,7 +228,7 @@ def load_filtered(columns, start, end):
     return df
 
 
-df = load_filtered(cols, start_dt, end_dt)
+df = load_filtered()
 
 if df.empty:
 
