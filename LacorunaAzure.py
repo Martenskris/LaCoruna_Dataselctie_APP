@@ -136,6 +136,9 @@ if "start_dt" not in st.session_state:
 if "data_loaded" not in st.session_state:
     st.session_state.data_loaded = False
 
+if "selected_signals" not in st.session_state:
+    st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
+
 # =========================================================
 # CALLBACKS
 # =========================================================
@@ -154,7 +157,6 @@ def update_from_inputs():
 
     st.session_state.start_dt = start
     st.session_state.end_dt = end
-
     st.session_state.time_slider = (start,end)
 
 
@@ -264,35 +266,40 @@ st.plotly_chart(fig,use_container_width=True)
 
 st.subheader("Aantal grafieken")
 
-n_signals = st.slider(
+n_signals = st.number_input(
     "Aantal signalen",
-    1,
-    min(12,len(signals)),
-    3,
+    min_value=1,
+    max_value=min(12,len(signals)),
+    value=3,
+    step=1,
     key="num_signals"
 )
 
 # =========================================================
-# SIGNAAL SELECTIE
+# SIGNAAL SELECTIE (keuzes blijven behouden)
 # =========================================================
 
 selected=[]
 
 for i in range(n_signals):
 
-    if i < len(DEFAULT_SIGNALS) and DEFAULT_SIGNALS[i] in signals:
-        default=DEFAULT_SIGNALS[i]
+    if i < len(st.session_state.selected_signals):
+        default = st.session_state.selected_signals[i]
+    elif i < len(DEFAULT_SIGNALS) and DEFAULT_SIGNALS[i] in signals:
+        default = DEFAULT_SIGNALS[i]
     else:
-        default=signals[i]
+        default = signals[0]
 
-    s=st.selectbox(
+    s = st.selectbox(
         f"Signaal {i+1}",
         signals,
-        index=signals.index(default),
+        index=signals.index(default) if default in signals else 0,
         key=f"signal_select_{i}"
     )
 
     selected.append(s)
+
+st.session_state.selected_signals = selected
 
 # =========================================================
 # LOAD BUTTON
@@ -302,7 +309,7 @@ if st.button("Laad geselecteerd tijdslot", key="load_button"):
     st.session_state.data_loaded = True
 
 # =========================================================
-# DATA PAS LADEN NA BUTTON
+# DATA LADEN NA BUTTON
 # =========================================================
 
 if st.session_state.data_loaded:
