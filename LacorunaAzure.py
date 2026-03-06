@@ -23,7 +23,7 @@ DEFAULT_SIGNALS = ["EEC1_Speed","Verbruik_g_per_km","GPS_speed"]
 PARQUET_URL = st.secrets["AZURE_BLOB_SAS_URL"]
 
 # =========================================================
-# AZURE DATASET
+# DATASET
 # =========================================================
 
 @st.cache_resource
@@ -137,6 +137,41 @@ if "start_dt" not in st.session_state:
     st.session_state.end_dt = min_time + timedelta(hours=1)
 
 # =========================================================
+# CALLBACKS
+# =========================================================
+
+def update_from_inputs():
+
+    start = datetime.combine(
+        st.session_state.start_date,
+        st.session_state.start_time
+    )
+
+    end = datetime.combine(
+        st.session_state.end_date,
+        st.session_state.end_time
+    )
+
+    st.session_state.start_dt = start
+    st.session_state.end_dt = end
+
+    st.session_state.time_slider = (start, end)
+
+
+def update_from_slider():
+
+    start, end = st.session_state.time_slider
+
+    st.session_state.start_dt = start
+    st.session_state.end_dt = end
+
+    st.session_state.start_date = start.date()
+    st.session_state.start_time = start.time()
+
+    st.session_state.end_date = end.date()
+    st.session_state.end_time = end.time()
+
+# =========================================================
 # DATUM + TIJD SELECTIE
 # =========================================================
 
@@ -146,54 +181,54 @@ c1, c2 = st.columns(2)
 
 with c1:
 
-    start_date = st.date_input(
+    st.date_input(
         "Start datum",
         value=st.session_state.start_dt.date(),
-        key="start_date"
+        key="start_date",
+        on_change=update_from_inputs
     )
 
-    start_time = st.time_input(
+    st.time_input(
         "Start tijd",
         value=st.session_state.start_dt.time(),
         step=60,
-        key="start_time"
+        key="start_time",
+        on_change=update_from_inputs
     )
 
 with c2:
 
-    end_date = st.date_input(
+    st.date_input(
         "Eind datum",
         value=st.session_state.end_dt.date(),
-        key="end_date"
+        key="end_date",
+        on_change=update_from_inputs
     )
 
-    end_time = st.time_input(
+    st.time_input(
         "Eind tijd",
         value=st.session_state.end_dt.time(),
         step=60,
-        key="end_time"
+        key="end_time",
+        on_change=update_from_inputs
     )
-
-# update session state vanuit dropdowns
-
-st.session_state.start_dt = datetime.combine(start_date, start_time)
-st.session_state.end_dt = datetime.combine(end_date, end_time)
 
 # =========================================================
 # SLIDER
 # =========================================================
 
-start_dt, end_dt = st.slider(
+st.slider(
     "Tijdslot",
     min_value=min_time,
     max_value=max_time,
     value=(st.session_state.start_dt, st.session_state.end_dt),
     step=TIME_STEP,
-    key="time_slider"
+    key="time_slider",
+    on_change=update_from_slider
 )
 
-st.session_state.start_dt = start_dt
-st.session_state.end_dt = end_dt
+start_dt = st.session_state.start_dt
+end_dt = st.session_state.end_dt
 
 # =========================================================
 # PREVIEW FIGUUR
