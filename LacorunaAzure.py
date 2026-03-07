@@ -42,7 +42,6 @@ def get_dataset():
 
     return ds.dataset(path, filesystem=fs, format="parquet")
 
-
 dataset = get_dataset()
 
 # -------------------------------------------------
@@ -59,7 +58,6 @@ def read_schema():
 
     return names, types
 
-
 col_names, col_types = read_schema()
 
 required = ["Timestamp",LAT_COL,LON_COL]
@@ -69,13 +67,11 @@ for r in required:
         st.error(f"Kolom ontbreekt: {r}")
         st.stop()
 
-
 def is_numeric(t):
 
     s = str(t).lower()
 
     return "int" in s or "float" in s or "double" in s
-
 
 signals = [
     c for c in col_names
@@ -85,18 +81,69 @@ signals = [
 ]
 
 # -------------------------------------------------
-# APP
+# STREAMLIT
 # -------------------------------------------------
 
 st.set_page_config(layout="wide")
-
 st.title("Geo + Signalen")
 
 # -------------------------------------------------
-# PREVIEW
+# SESSION STATE
 # -------------------------------------------------
 
-preview_signal = st.selectbox("Preview signaal",signals,index=0)
+if "selected_signals" not in st.session_state:
+    st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
+
+# -------------------------------------------------
+# LAYOUT
+# -------------------------------------------------
+
+left, right = st.columns([1,2])
+
+# -------------------------------------------------
+# LINKS: SIGNAL SELECTIE
+# -------------------------------------------------
+
+with left:
+
+    st.subheader("Signalen")
+
+    preview_signal = st.selectbox(
+        "Preview signaal",
+        signals,
+        index=0
+    )
+
+    n_signals = st.number_input(
+        "Aantal signalen",
+        min_value=1,
+        max_value=min(12,len(signals)),
+        value=3,
+        step=1
+    )
+
+    selected=[]
+
+    for i in range(n_signals):
+
+        if i < len(st.session_state.selected_signals):
+            default = st.session_state.selected_signals[i]
+        else:
+            default = signals[0]
+
+        s = st.selectbox(
+            f"Signaal {i+1}",
+            signals,
+            index=signals.index(default)
+        )
+
+        selected.append(s)
+
+    st.session_state.selected_signals = selected
+
+# -------------------------------------------------
+# PREVIEW DATA
+# -------------------------------------------------
 
 @st.cache_data
 def load_preview(signal):
@@ -123,99 +170,51 @@ def load_preview(signal):
 
     return df
 
-
 preview_df = load_preview(preview_signal)
 
 min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 # -------------------------------------------------
-# TIJDSLOT
+# RECHTS: PREVIEW
 # -------------------------------------------------
 
-start_dt,end_dt = st.slider(
-    "Tijdslot",
-    min_value=min_time,
-    max_value=max_time,
-    value=(min_time,min_time+timedelta(hours=1)),
-    step=TIME_STEP
-)
+with right:
 
-# -------------------------------------------------
-# PREVIEW FIGURE
-# -------------------------------------------------
-
-fig = go.Figure()
-
-fig.add_trace(
-    go.Scatter(
-        x=preview_df["Timestamp"],
-        y=preview_df[preview_signal],
-        mode="lines"
-    )
-)
-
-fig.add_vrect(
-    x0=start_dt,
-    x1=end_dt,
-    fillcolor="rgba(0,0,0,0.2)",
-    line_width=0
-)
-
-fig.update_layout(height=250)
-
-st.plotly_chart(fig,use_container_width=True)
-
-# -------------------------------------------------
-# SESSION STATE
-# -------------------------------------------------
-
-if "selected_signals" not in st.session_state:
-
-    st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
-
-# -------------------------------------------------
-# LAYOUT
-# -------------------------------------------------
-
-col_left,col_right = st.columns([1,2])
-
-# -------------------------------------------------
-# SIGNAL SELECTOR
-# -------------------------------------------------
-
-with col_left:
-
-    st.subheader("Signalen")
-
-    n_signals = st.number_input(
-        "Aantal",
-        min_value=1,
-        max_value=min(12,len(signals)),
-        value=3,
-        step=1
+    start_dt,end_dt = st.slider(
+        "Tijdslot",
+        min_value=min_time,
+        max_value=max_time,
+        value=(min_time,min_time+timedelta(hours=1)),
+        step=TIME_STEP
     )
 
-    selected=[]
+    fig = go.Figure()
 
-    for i in range(n_signals):
-
-        if i < len(st.session_state.selected_signals):
-            default = st.session_state.selected_signals[i]
-        else:
-            default = signals[0]
-
-        s = st.selectbox(
-            f"Signaal {i+1}",
-            signals,
-            index=signals.index(default)
+    fig.add_trace(
+        go.Scatter(
+            x=preview_df["Timestamp"],
+            y=preview_df[preview_signal],
+            mode="lines"
         )
+    )
 
-        selected.append(s)
+    fig.add_vrect(
+        x0=start_dt,
+        x1=end_dt,
+        fillcolor="rgba(0,0,0,0.2)",
+        line_width=0
+    )
 
-    st.session_state.selected_signals = selected
+    fig.update_layout(height=250)
 
-    load_button = st.button("Laad tijdslot")
+    st.plotly_chart(fig,use_container_width=True)
+
+# -------------------------------------------------
+# LOAD BUTTON
+# -------------------------------------------------
+
+load_button = st.button("Laad geselecteerd tijdslot")
 
 # -------------------------------------------------
 # DATA LADEN
@@ -223,9 +222,7 @@ with col_left:
 
 if load_button:
 
-    cols = list(dict.fromkeys(
-        ["Timestamp",LAT_COL,LON_COL]+selected
-    ))
+    cols = list(dict.fromkeys(["Timestamp",LAT_COL,LON_COL]+selected))
 
     filter_expr = (
         (ds.field("Timestamp")>=pd.Timestamp(start_dt)) &
@@ -251,35 +248,33 @@ if load_button:
 
         df = df.iloc[idx]
 
-# -------------------------------------------------
-# GEOPLOT
-# -------------------------------------------------
+    # -------------------------------------------------
+    # GEO PLOT
+    # -------------------------------------------------
 
-    with col_right:
+    st.subheader("Geo")
 
-        st.subheader("Geo")
+    fig = go.Figure()
 
-        fig = go.Figure()
-
-        fig.add_trace(
-            go.Scattermapbox(
-                lat=df[LAT_COL],
-                lon=df[LON_COL],
-                mode="markers",
-                marker=dict(size=6)
-            )
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=df[LAT_COL],
+            lon=df[LON_COL],
+            mode="markers",
+            marker=dict(size=6)
         )
+    )
 
-        fig.update_layout(
-            mapbox_style="open-street-map",
-            height=600
-        )
+    fig.update_layout(
+        mapbox_style="open-street-map",
+        height=600
+    )
 
-        st.plotly_chart(fig,use_container_width=True)
+    st.plotly_chart(fig,use_container_width=True)
 
-# -------------------------------------------------
-# SIGNAL GRAFIEKEN
-# -------------------------------------------------
+    # -------------------------------------------------
+    # SIGNAL GRAFIEKEN
+    # -------------------------------------------------
 
     st.subheader("Grafieken")
 
@@ -299,9 +294,9 @@ if load_button:
 
         st.plotly_chart(fig,use_container_width=True)
 
-# -------------------------------------------------
-# DOWNLOAD
-# -------------------------------------------------
+    # -------------------------------------------------
+    # DOWNLOAD
+    # -------------------------------------------------
 
     csv = df.to_csv(index=False).encode()
 
