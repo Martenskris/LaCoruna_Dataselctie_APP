@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import pyarrow.dataset as ds
 import plotly.graph_objects as go
-from datetime import timedelta
+from datetime import timedelta, datetime
 import adlfs
 
 # -------------------------------------------------
@@ -32,17 +32,11 @@ div[data-baseweb="select"] > div{
 
 label{
     font-size:0.75rem;
-    margin-bottom:0rem;
 }
 
 div[data-testid="stNumberInput"] input{
     height:26px;
     font-size:0.85rem;
-}
-
-div[data-testid="stSlider"]{
-    margin-top:0.2rem;
-    margin-bottom:0.2rem;
 }
 
 .signalpanel{
@@ -91,6 +85,7 @@ def get_dataset():
 
     return ds.dataset(path, filesystem=fs, format="parquet")
 
+
 dataset = get_dataset()
 
 # -------------------------------------------------
@@ -106,6 +101,7 @@ def read_schema():
     types = {f.name: f.type for f in schema}
 
     return names, types
+
 
 col_names, col_types = read_schema()
 
@@ -130,6 +126,13 @@ signals = [
 ]
 
 # -------------------------------------------------
+# SESSION STATE
+# -------------------------------------------------
+
+if "selected_signals" not in st.session_state:
+    st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
+
+# -------------------------------------------------
 # STREAMLIT
 # -------------------------------------------------
 
@@ -138,38 +141,26 @@ st.set_page_config(layout="wide")
 st.title("Geo + Signalen")
 
 # -------------------------------------------------
-# SESSION STATE
-# -------------------------------------------------
-
-if "selected_signals" not in st.session_state:
-    st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
-
-# -------------------------------------------------
-# LAYOUT 15 / 85
+# LAYOUT
 # -------------------------------------------------
 
 left, right = st.columns([1,6])
 
 # -------------------------------------------------
-# LINKS: SIGNAL PANEL
+# SIGNAL PANEL
 # -------------------------------------------------
 
 with left:
 
     st.markdown('<div class="signalpanel">', unsafe_allow_html=True)
 
-    preview_signal = st.selectbox(
-        "Preview",
-        signals,
-        index=0
-    )
+    preview_signal = st.selectbox("Preview",signals)
 
     n_signals = st.number_input(
         "Aantal",
         min_value=1,
         max_value=min(12,len(signals)),
-        value=3,
-        step=1
+        value=3
     )
 
     selected=[]
@@ -181,11 +172,7 @@ with left:
         else:
             default = signals[0]
 
-        s = st.selectbox(
-            f"S{i+1}",
-            signals,
-            index=signals.index(default)
-        )
+        s = st.selectbox(f"S{i+1}",signals,index=signals.index(default))
 
         selected.append(s)
 
@@ -230,7 +217,7 @@ min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 # -------------------------------------------------
-# RECHTS: PREVIEW
+# PREVIEW + SLIDER
 # -------------------------------------------------
 
 with right:
@@ -321,7 +308,21 @@ if load_button:
     st.plotly_chart(fig,use_container_width=True)
 
     # -------------------------------------------------
-    # SIGNAL GRAFIEKEN
+    # NUMERIEKE TIJDSELECTIE
+    # -------------------------------------------------
+
+    col1,col2 = st.columns(2)
+
+    with col1:
+        start_date = st.date_input("Start datum",start_dt.date())
+        start_time = st.time_input("Start tijd",start_dt.time())
+
+    with col2:
+        end_date = st.date_input("Eind datum",end_dt.date())
+        end_time = st.time_input("Eind tijd",end_dt.time())
+
+    # -------------------------------------------------
+    # GRAFIEKEN
     # -------------------------------------------------
 
     st.subheader("Grafieken")
