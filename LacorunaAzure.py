@@ -96,7 +96,6 @@ dataset = get_dataset()
 def read_schema():
 
     schema = dataset.schema
-
     names = schema.names
     types = {f.name: f.type for f in schema}
 
@@ -105,7 +104,7 @@ def read_schema():
 
 col_names, col_types = read_schema()
 
-required = ["Timestamp",LAT_COL,LON_COL]
+required = ["Timestamp", LAT_COL, LON_COL]
 
 for r in required:
     if r not in col_names:
@@ -141,7 +140,7 @@ st.set_page_config(layout="wide")
 st.title("Geo + Signalen")
 
 # -------------------------------------------------
-# LAYOUT
+# LAYOUT 15 / 85
 # -------------------------------------------------
 
 left, right = st.columns([1,6])
@@ -154,7 +153,7 @@ with left:
 
     st.markdown('<div class="signalpanel">', unsafe_allow_html=True)
 
-    preview_signal = st.selectbox("Preview",signals)
+    preview_signal = st.selectbox("Preview", signals)
 
     n_signals = st.number_input(
         "Aantal",
@@ -163,7 +162,7 @@ with left:
         value=3
     )
 
-    selected=[]
+    selected = []
 
     for i in range(n_signals):
 
@@ -172,7 +171,11 @@ with left:
         else:
             default = signals[0]
 
-        s = st.selectbox(f"S{i+1}",signals,index=signals.index(default))
+        s = st.selectbox(
+            f"S{i+1}",
+            signals,
+            index=signals.index(default)
+        )
 
         selected.append(s)
 
@@ -190,7 +193,7 @@ with left:
 def load_preview(signal):
 
     scanner = dataset.scanner(
-        columns=["Timestamp",signal],
+        columns=["Timestamp", signal],
         batch_size=200000,
         use_threads=True
     )
@@ -205,11 +208,12 @@ def load_preview(signal):
 
     if len(df) > MAX_POINTS_PREVIEW:
 
-        idx = np.linspace(0,len(df)-1,MAX_POINTS_PREVIEW).astype(int)
+        idx = np.linspace(0, len(df)-1, MAX_POINTS_PREVIEW).astype(int)
 
         df = df.iloc[idx]
 
     return df
+
 
 preview_df = load_preview(preview_signal)
 
@@ -217,16 +221,16 @@ min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 # -------------------------------------------------
-# PREVIEW + SLIDER
+# PREVIEW + TIJDSELECTIE
 # -------------------------------------------------
 
 with right:
 
-    start_dt,end_dt = st.slider(
+    start_dt, end_dt = st.slider(
         "Tijdslot",
         min_value=min_time,
         max_value=max_time,
-        value=(min_time,min_time+timedelta(hours=1)),
+        value=(min_time, min_time + timedelta(hours=1)),
         step=TIME_STEP
     )
 
@@ -249,7 +253,22 @@ with right:
 
     fig.update_layout(height=250)
 
-    st.plotly_chart(fig,use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # numerieke tijdselectie
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        start_date = st.date_input("Start datum", start_dt.date())
+        start_time = st.time_input("Start tijd", start_dt.time())
+
+    with c2:
+        end_date = st.date_input("Eind datum", end_dt.date())
+        end_time = st.time_input("Eind tijd", end_dt.time())
+
+    start_dt = datetime.combine(start_date, start_time)
+    end_dt = datetime.combine(end_date, end_time)
 
 # -------------------------------------------------
 # DATA LADEN
@@ -257,11 +276,11 @@ with right:
 
 if load_button:
 
-    cols = list(dict.fromkeys(["Timestamp",LAT_COL,LON_COL]+selected))
+    cols = list(dict.fromkeys(["Timestamp", LAT_COL, LON_COL] + selected))
 
     filter_expr = (
-        (ds.field("Timestamp")>=pd.Timestamp(start_dt)) &
-        (ds.field("Timestamp")<=pd.Timestamp(end_dt))
+        (ds.field("Timestamp") >= pd.Timestamp(start_dt)) &
+        (ds.field("Timestamp") <= pd.Timestamp(end_dt))
     )
 
     scanner = dataset.scanner(
@@ -279,7 +298,7 @@ if load_button:
 
     if len(df) > MAX_POINTS_GRAPH:
 
-        idx = np.linspace(0,len(df)-1,MAX_POINTS_GRAPH).astype(int)
+        idx = np.linspace(0, len(df)-1, MAX_POINTS_GRAPH).astype(int)
 
         df = df.iloc[idx]
 
@@ -305,24 +324,10 @@ if load_button:
         height=600
     )
 
-    st.plotly_chart(fig,use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
     # -------------------------------------------------
-    # NUMERIEKE TIJDSELECTIE
-    # -------------------------------------------------
-
-    col1,col2 = st.columns(2)
-
-    with col1:
-        start_date = st.date_input("Start datum",start_dt.date())
-        start_time = st.time_input("Start tijd",start_dt.time())
-
-    with col2:
-        end_date = st.date_input("Eind datum",end_dt.date())
-        end_time = st.time_input("Eind tijd",end_dt.time())
-
-    # -------------------------------------------------
-    # GRAFIEKEN
+    # SIGNAL GRAFIEKEN
     # -------------------------------------------------
 
     st.subheader("Grafieken")
@@ -339,9 +344,9 @@ if load_button:
             )
         )
 
-        fig.update_layout(title=s,height=250)
+        fig.update_layout(title=s, height=250)
 
-        st.plotly_chart(fig,use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
     # -------------------------------------------------
     # DOWNLOAD
