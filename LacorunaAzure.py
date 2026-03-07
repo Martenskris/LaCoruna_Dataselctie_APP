@@ -7,6 +7,36 @@ from datetime import timedelta
 import adlfs
 
 # -------------------------------------------------
+# COMPACT UI CSS
+# -------------------------------------------------
+
+st.markdown("""
+<style>
+
+div.block-container{
+    padding-top: 1rem;
+}
+
+div[data-testid="stVerticalBlock"] > div{
+    gap:0.25rem;
+}
+
+div[data-baseweb="select"]{
+    margin-bottom:0.25rem;
+}
+
+div[data-testid="stNumberInput"]{
+    margin-bottom:0.25rem;
+}
+
+label{
+    margin-bottom:0.1rem;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# -------------------------------------------------
 # CONFIG
 # -------------------------------------------------
 
@@ -42,7 +72,6 @@ def get_dataset():
 
     return ds.dataset(path, filesystem=fs, format="parquet")
 
-
 dataset = get_dataset()
 
 # -------------------------------------------------
@@ -59,7 +88,6 @@ def read_schema():
 
     return names, types
 
-
 col_names, col_types = read_schema()
 
 required = ["Timestamp",LAT_COL,LON_COL]
@@ -75,7 +103,6 @@ def is_numeric(t):
 
     return "int" in s or "float" in s or "double" in s
 
-
 signals = [
     c for c in col_names
     if c not in required
@@ -88,6 +115,7 @@ signals = [
 # -------------------------------------------------
 
 st.set_page_config(layout="wide")
+
 st.title("Geo + Signalen")
 
 # -------------------------------------------------
@@ -98,10 +126,10 @@ if "selected_signals" not in st.session_state:
     st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
 
 # -------------------------------------------------
-# LAYOUT 1/4 – 3/4
+# LAYOUT 15% / 85%
 # -------------------------------------------------
 
-left, right = st.columns([1,3])
+left, right = st.columns([0.15,0.85])
 
 # -------------------------------------------------
 # LINKS: SIGNAL SELECTIE
@@ -109,16 +137,14 @@ left, right = st.columns([1,3])
 
 with left:
 
-    st.subheader("Signalen")
-
     preview_signal = st.selectbox(
-        "Preview signaal",
+        "Preview",
         signals,
         index=0
     )
 
     n_signals = st.number_input(
-        "Aantal signalen",
+        "Aantal",
         min_value=1,
         max_value=min(12,len(signals)),
         value=3,
@@ -135,7 +161,7 @@ with left:
             default = signals[0]
 
         s = st.selectbox(
-            f"Signaal {i+1}",
+            f"S{i+1}",
             signals,
             index=signals.index(default)
         )
@@ -173,14 +199,13 @@ def load_preview(signal):
 
     return df
 
-
 preview_df = load_preview(preview_signal)
 
 min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 # -------------------------------------------------
-# RECHTS: PREVIEW
+# RECHTS: PREVIEW + TIJDSLOT
 # -------------------------------------------------
 
 with right:
@@ -218,7 +243,7 @@ with right:
 # LOAD BUTTON
 # -------------------------------------------------
 
-load_button = st.button("Laad geselecteerd tijdslot")
+load_button = st.button("Laad tijdslot")
 
 # -------------------------------------------------
 # DATA LADEN
