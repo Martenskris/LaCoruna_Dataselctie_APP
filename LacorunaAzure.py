@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import pyarrow.dataset as ds
 import plotly.graph_objects as go
-from datetime import timedelta, datetime
+from datetime import timedelta
 import adlfs
 
 # =========================================================
@@ -13,14 +13,14 @@ import adlfs
 LAT_COL = "GPS_x"
 LON_COL = "GPS_y"
 
-EXCLUDE = {"Time","Seconds","Minutes","Hours","Year","Month","Day"}
-
-MAX_POINTS_PREVIEW = 5000
+MAX_POINTS_PREVIEW = 8000
 MAX_POINTS_GRAPH = 50000
 
 TIME_STEP = timedelta(minutes=1)
 
-DEFAULT_SIGNALS = ["EEC1_Speed","Verbruik_g_per_km","GPS_speed"]
+DEFAULT_SIGNALS = ["EEC1_Speed", "Verbruik_g_per_km", "GPS_speed"]
+
+EXCLUDE = {"Time","Seconds","Minutes","Hours","Year","Month","Day"}
 
 PARQUET_URL = st.secrets["AZURE_BLOB_SAS_URL"]
 
@@ -60,27 +60,27 @@ def read_schema():
 
     schema = dataset.schema
 
-    col_names = schema.names
-    col_types = {f.name: f.type for f in schema}
+    names = schema.names
+    types = {f.name: f.type for f in schema}
 
-    return col_names, col_types
+    return names, types
 
 
 col_names, col_types = read_schema()
 
 required = ["Timestamp", LAT_COL, LON_COL]
 
-missing = [c for c in required if c not in col_names]
+for r in required:
+    if r not in col_names:
+        st.error(f"Kolom ontbreekt: {r}")
+        st.stop()
 
-if missing:
-    st.error(f"Ontbrekende kolommen: {missing}")
-    st.stop()
 
-def is_numeric(pa_type):
+def is_numeric(t):
 
-    s = str(pa_type).lower()
+    s = str(t).lower()
 
-    return ("int" in s) or ("float" in s) or ("double" in s)
+    return "int" in s or "float" in s or "double" in s
 
 
 signals = [
@@ -91,25 +91,25 @@ signals = [
 ]
 
 # =========================================================
-# APP
+# STREAMLIT APP
 # =========================================================
 
 st.set_page_config(layout="wide")
 
-st.title("Geo + signalen")
+st.title("Geo + Signalen")
 
 # =========================================================
-# PREVIEW
+# PREVIEW SIGNAL
 # =========================================================
 
 preview_signal = st.selectbox(
     "Preview signaal",
     signals,
-    index=0,
+    index=0
 )
 
 @st.cache_data
-def preview_sample(signal):
+def load_preview(signal):
 
     scanner = dataset.scanner(
         columns=["Timestamp", signal],
@@ -117,56 +117,47 @@ def preview_sample(signal):
         use_threads=True
     )
 
-    table = scanner.head(MAX_POINTS_PREVIEW)
+    table = scanner.to_table()
 
     df = table.to_pandas()
 
     df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 
+    df = df.sort_values("Timestamp")
+
+    # gespreide sampling
+    if len(df) > MAX_POINTS_PREVIEW:
+
+        idx = np.linspace(
+            0,
+            len(df)-1,
+            MAX_POINTS_PREVIEW
+        ).astype(int)
+
+        df = df.iloc[idx]
+
     return df
 
 
-preview_df = preview_sample(preview_signal)
+preview_df = load_preview(preview_signal)
 
 min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 # =========================================================
-# SESSION STATE
+# TIJDSLOT
 # =========================================================
-
-if "start_dt" not in st.session_state:
-
-    st.session_state.start_dt = min_time
-    st.session_state.end_dt = min_time + timedelta(hours=1)
-
-if "data_loaded" not in st.session_state:
-
-    st.session_state.data_loaded = False
-
-if "selected_signals" not in st.session_state:
-
-    st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
-
-# =========================================================
-# TIJDSELECTIE
-# =========================================================
-
-st.subheader("Tijdselectie")
 
 start_dt, end_dt = st.slider(
     "Tijdslot",
     min_value=min_time,
     max_value=max_time,
-    value=(st.session_state.start_dt, st.session_state.end_dt),
+    value=(min_time, min_time + timedelta(hours=1)),
     step=TIME_STEP
 )
 
-st.session_state.start_dt = start_dt
-st.session_state.end_dt = end_dt
-
 # =========================================================
-# PREVIEW GRAFIEK
+# PREVIEW FIGURE
 # =========================================================
 
 fig = go.Figure()
@@ -188,7 +179,7 @@ fig.add_vrect(
 
 fig.update_layout(height=300)
 
-st.plotly_chart(fig,use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
 # AANTAL SIGNALEN
@@ -199,16 +190,24 @@ st.subheader("Aantal grafieken")
 n_signals = st.number_input(
     "Aantal signalen",
     min_value=1,
-    max_value=min(12,len(signals)),
+    max_value=min(12, len(signals)),
     value=3,
     step=1
 )
 
 # =========================================================
-# SIGNAAL SELECTIE
+# SESSION STATE
 # =========================================================
 
-selected=[]
+if "selected_signals" not in st.session_state:
+
+    st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
+
+# =========================================================
+# SIGNAL SELECTORS
+# =========================================================
+
+selected = []
 
 for i in range(n_signals):
 
@@ -236,12 +235,14 @@ if st.button("Laad geselecteerd tijdslot"):
     st.session_state.data_loaded = True
 
 # =========================================================
-# DATA LADEN (ROW GROUP PRUNING)
+# LOAD DATA
 # =========================================================
 
-if st.session_state.data_loaded:
+if st.session_state.get("data_loaded", False):
 
-    cols = list(dict.fromkeys(["Timestamp",LAT_COL,LON_COL]+selected))
+    cols = list(dict.fromkeys(
+        ["Timestamp", LAT_COL, LON_COL] + selected
+    ))
 
     filter_expr = (
         (ds.field("Timestamp") >= pd.Timestamp(start_dt)) &
@@ -264,7 +265,11 @@ if st.session_state.data_loaded:
     # sampling voor snelle grafieken
     if len(df) > MAX_POINTS_GRAPH:
 
-        idx = np.linspace(0,len(df)-1,MAX_POINTS_GRAPH).astype(int)
+        idx = np.linspace(
+            0,
+            len(df)-1,
+            MAX_POINTS_GRAPH
+        ).astype(int)
 
         df = df.iloc[idx]
 
@@ -286,9 +291,15 @@ if st.session_state.data_loaded:
             )
         )
 
-        fig.update_layout(title=s,height=300)
+        fig.update_layout(
+            title=s,
+            height=300
+        )
 
-        st.plotly_chart(fig,use_container_width=True)
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
 
     st.subheader("Download")
 
