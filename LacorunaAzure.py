@@ -42,6 +42,7 @@ def get_dataset():
 
     return ds.dataset(path, filesystem=fs, format="parquet")
 
+
 dataset = get_dataset()
 
 # -------------------------------------------------
@@ -58,6 +59,7 @@ def read_schema():
 
     return names, types
 
+
 col_names, col_types = read_schema()
 
 required = ["Timestamp",LAT_COL,LON_COL]
@@ -72,6 +74,7 @@ def is_numeric(t):
     s = str(t).lower()
 
     return "int" in s or "float" in s or "double" in s
+
 
 signals = [
     c for c in col_names
@@ -95,10 +98,10 @@ if "selected_signals" not in st.session_state:
     st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
 
 # -------------------------------------------------
-# LAYOUT
+# LAYOUT 1/4 – 3/4
 # -------------------------------------------------
 
-left, right = st.columns([1,2])
+left, right = st.columns([1,3])
 
 # -------------------------------------------------
 # LINKS: SIGNAL SELECTIE
@@ -169,6 +172,7 @@ def load_preview(signal):
         df = df.iloc[idx]
 
     return df
+
 
 preview_df = load_preview(preview_signal)
 
