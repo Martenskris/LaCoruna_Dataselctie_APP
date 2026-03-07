@@ -13,24 +13,43 @@ import adlfs
 st.markdown("""
 <style>
 
-div.block-container{
-    padding-top: 1rem;
+.block-container{
+    padding-top:0.4rem;
 }
 
-div[data-testid="stVerticalBlock"] > div{
-    gap:0.25rem;
+div[data-testid="stVerticalBlock"]{
+    gap:0.15rem;
 }
 
 div[data-baseweb="select"]{
-    margin-bottom:0.25rem;
+    margin-bottom:0.1rem;
 }
 
-div[data-testid="stNumberInput"]{
-    margin-bottom:0.25rem;
+div[data-baseweb="select"] > div{
+    min-height:26px;
+    font-size:0.85rem;
 }
 
 label{
-    margin-bottom:0.1rem;
+    font-size:0.75rem;
+    margin-bottom:0rem;
+}
+
+div[data-testid="stNumberInput"] input{
+    height:26px;
+    font-size:0.85rem;
+}
+
+div[data-testid="stSlider"]{
+    margin-top:0.2rem;
+    margin-bottom:0.2rem;
+}
+
+.signalpanel{
+    border:1px solid #e5e5e5;
+    border-radius:6px;
+    padding:6px;
+    background:#fafafa;
 }
 
 </style>
@@ -126,16 +145,18 @@ if "selected_signals" not in st.session_state:
     st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
 
 # -------------------------------------------------
-# LAYOUT 15% / 85%
+# LAYOUT 15 / 85
 # -------------------------------------------------
 
-left, right = st.columns([0.15,0.85])
+left, right = st.columns([1,6])
 
 # -------------------------------------------------
-# LINKS: SIGNAL SELECTIE
+# LINKS: SIGNAL PANEL
 # -------------------------------------------------
 
 with left:
+
+    st.markdown('<div class="signalpanel">', unsafe_allow_html=True)
 
     preview_signal = st.selectbox(
         "Preview",
@@ -169,6 +190,10 @@ with left:
         selected.append(s)
 
     st.session_state.selected_signals = selected
+
+    load_button = st.button("Laad")
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # -------------------------------------------------
 # PREVIEW DATA
@@ -205,7 +230,7 @@ min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 # -------------------------------------------------
-# RECHTS: PREVIEW + TIJDSLOT
+# RECHTS: PREVIEW
 # -------------------------------------------------
 
 with right:
@@ -238,12 +263,6 @@ with right:
     fig.update_layout(height=250)
 
     st.plotly_chart(fig,use_container_width=True)
-
-# -------------------------------------------------
-# LOAD BUTTON
-# -------------------------------------------------
-
-load_button = st.button("Laad tijdslot")
 
 # -------------------------------------------------
 # DATA LADEN
