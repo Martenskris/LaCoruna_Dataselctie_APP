@@ -14,7 +14,7 @@ st.markdown("""
 <style>
 
 .block-container{
-    padding-top:0.4rem;
+    padding-top:2rem;
 }
 
 div[data-testid="stVerticalBlock"]{
@@ -85,7 +85,6 @@ def get_dataset():
 
     return ds.dataset(path, filesystem=fs, format="parquet")
 
-
 dataset = get_dataset()
 
 # -------------------------------------------------
@@ -101,7 +100,6 @@ def read_schema():
 
     return names, types
 
-
 col_names, col_types = read_schema()
 
 required = ["Timestamp", LAT_COL, LON_COL]
@@ -114,7 +112,6 @@ for r in required:
 def is_numeric(t):
 
     s = str(t).lower()
-
     return "int" in s or "float" in s or "double" in s
 
 signals = [
@@ -209,11 +206,9 @@ def load_preview(signal):
     if len(df) > MAX_POINTS_PREVIEW:
 
         idx = np.linspace(0, len(df)-1, MAX_POINTS_PREVIEW).astype(int)
-
         df = df.iloc[idx]
 
     return df
-
 
 preview_df = load_preview(preview_signal)
 
@@ -251,7 +246,10 @@ with right:
         line_width=0
     )
 
-    fig.update_layout(height=250)
+    fig.update_layout(
+        height=350,
+        margin=dict(l=10,r=10,t=20,b=10)
+    )
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -299,7 +297,6 @@ if load_button:
     if len(df) > MAX_POINTS_GRAPH:
 
         idx = np.linspace(0, len(df)-1, MAX_POINTS_GRAPH).astype(int)
-
         df = df.iloc[idx]
 
     # -------------------------------------------------
@@ -321,7 +318,7 @@ if load_button:
 
     fig.update_layout(
         mapbox_style="open-street-map",
-        height=600
+        height=700
     )
 
     st.plotly_chart(fig, use_container_width=True)
