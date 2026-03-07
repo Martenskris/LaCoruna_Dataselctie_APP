@@ -134,8 +134,6 @@ if "selected_signals" not in st.session_state:
 
 st.set_page_config(layout="wide")
 
-st.title("Geo + Signalen")
-
 # -------------------------------------------------
 # LAYOUT 15 / 85
 # -------------------------------------------------
@@ -143,10 +141,12 @@ st.title("Geo + Signalen")
 left, right = st.columns([1,6])
 
 # -------------------------------------------------
-# SIGNAL PANEL
+# LEFT COLUMN (titel + signaalpaneel)
 # -------------------------------------------------
 
 with left:
+
+    st.title("Geo + Signalen")
 
     st.markdown('<div class="signalpanel">', unsafe_allow_html=True)
 
@@ -216,7 +216,7 @@ min_time = preview_df["Timestamp"].min().to_pydatetime()
 max_time = preview_df["Timestamp"].max().to_pydatetime()
 
 # -------------------------------------------------
-# PREVIEW + TIJDSELECTIE
+# RIGHT COLUMN
 # -------------------------------------------------
 
 with right:
@@ -252,8 +252,6 @@ with right:
     )
 
     st.plotly_chart(fig, use_container_width=True)
-
-    # numerieke tijdselectie
 
     c1, c2 = st.columns(2)
 
@@ -299,10 +297,6 @@ if load_button:
         idx = np.linspace(0, len(df)-1, MAX_POINTS_GRAPH).astype(int)
         df = df.iloc[idx]
 
-    # -------------------------------------------------
-    # GEO PLOT
-    # -------------------------------------------------
-
     st.subheader("Geo")
 
     fig = go.Figure()
@@ -323,10 +317,6 @@ if load_button:
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # -------------------------------------------------
-    # SIGNAL GRAFIEKEN
-    # -------------------------------------------------
-
     st.subheader("Grafieken")
 
     for s in selected:
@@ -344,10 +334,6 @@ if load_button:
         fig.update_layout(title=s, height=250)
 
         st.plotly_chart(fig, use_container_width=True)
-
-    # -------------------------------------------------
-    # DOWNLOAD
-    # -------------------------------------------------
 
     csv = df.to_csv(index=False).encode()
 
