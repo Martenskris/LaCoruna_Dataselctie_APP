@@ -7,6 +7,55 @@ from datetime import timedelta
 import adlfs
 
 # -------------------------------------------------
+# COMPACT UI CSS
+# -------------------------------------------------
+
+st.markdown("""
+<style>
+
+.block-container{
+    padding-top:0.4rem;
+}
+
+div[data-testid="stVerticalBlock"]{
+    gap:0.15rem;
+}
+
+div[data-baseweb="select"]{
+    margin-bottom:0.1rem;
+}
+
+div[data-baseweb="select"] > div{
+    min-height:26px;
+    font-size:0.85rem;
+}
+
+label{
+    font-size:0.75rem;
+    margin-bottom:0rem;
+}
+
+div[data-testid="stNumberInput"] input{
+    height:26px;
+    font-size:0.85rem;
+}
+
+div[data-testid="stSlider"]{
+    margin-top:0.2rem;
+    margin-bottom:0.2rem;
+}
+
+.signalpanel{
+    border:1px solid #e5e5e5;
+    border-radius:6px;
+    padding:6px;
+    background:#fafafa;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# -------------------------------------------------
 # CONFIG
 # -------------------------------------------------
 
@@ -42,7 +91,6 @@ def get_dataset():
 
     return ds.dataset(path, filesystem=fs, format="parquet")
 
-
 dataset = get_dataset()
 
 # -------------------------------------------------
@@ -59,7 +107,6 @@ def read_schema():
 
     return names, types
 
-
 col_names, col_types = read_schema()
 
 required = ["Timestamp",LAT_COL,LON_COL]
@@ -75,7 +122,6 @@ def is_numeric(t):
 
     return "int" in s or "float" in s or "double" in s
 
-
 signals = [
     c for c in col_names
     if c not in required
@@ -88,6 +134,7 @@ signals = [
 # -------------------------------------------------
 
 st.set_page_config(layout="wide")
+
 st.title("Geo + Signalen")
 
 # -------------------------------------------------
@@ -98,27 +145,27 @@ if "selected_signals" not in st.session_state:
     st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
 
 # -------------------------------------------------
-# LAYOUT 1/4 – 3/4
+# LAYOUT 15 / 85
 # -------------------------------------------------
 
-left, right = st.columns([1,3])
+left, right = st.columns([1,6])
 
 # -------------------------------------------------
-# LINKS: SIGNAL SELECTIE
+# LINKS: SIGNAL PANEL
 # -------------------------------------------------
 
 with left:
 
-    st.subheader("Signalen")
+    st.markdown('<div class="signalpanel">', unsafe_allow_html=True)
 
     preview_signal = st.selectbox(
-        "Preview signaal",
+        "Preview",
         signals,
         index=0
     )
 
     n_signals = st.number_input(
-        "Aantal signalen",
+        "Aantal",
         min_value=1,
         max_value=min(12,len(signals)),
         value=3,
@@ -135,7 +182,7 @@ with left:
             default = signals[0]
 
         s = st.selectbox(
-            f"Signaal {i+1}",
+            f"S{i+1}",
             signals,
             index=signals.index(default)
         )
@@ -143,6 +190,10 @@ with left:
         selected.append(s)
 
     st.session_state.selected_signals = selected
+
+    load_button = st.button("Laad")
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # -------------------------------------------------
 # PREVIEW DATA
@@ -172,7 +223,6 @@ def load_preview(signal):
         df = df.iloc[idx]
 
     return df
-
 
 preview_df = load_preview(preview_signal)
 
@@ -213,12 +263,6 @@ with right:
     fig.update_layout(height=250)
 
     st.plotly_chart(fig,use_container_width=True)
-
-# -------------------------------------------------
-# LOAD BUTTON
-# -------------------------------------------------
-
-load_button = st.button("Laad geselecteerd tijdslot")
 
 # -------------------------------------------------
 # DATA LADEN
