@@ -2,74 +2,32 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import pyarrow.dataset as ds
+import pyarrow.parquet as pq
 import plotly.graph_objects as go
-from datetime import timedelta, datetime
+from datetime import timedelta
 import adlfs
 
-# -------------------------------------------------
-# COMPACT UI CSS
-# -------------------------------------------------
-
-st.markdown("""
-<style>
-
-.block-container{
-    padding-top:2rem;
-}
-
-div[data-testid="stVerticalBlock"]{
-    gap:0.15rem;
-}
-
-div[data-baseweb="select"]{
-    margin-bottom:0.1rem;
-}
-
-div[data-baseweb="select"] > div{
-    min-height:26px;
-    font-size:0.85rem;
-}
-
-label{
-    font-size:0.75rem;
-}
-
-div[data-testid="stNumberInput"] input{
-    height:26px;
-    font-size:0.85rem;
-}
-
-.signalpanel{
-    border:1px solid #e5e5e5;
-    border-radius:6px;
-    padding:6px;
-    background:#fafafa;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# -------------------------------------------------
+# =========================================================
 # CONFIG
-# -------------------------------------------------
+# =========================================================
 
 LAT_COL = "GPS_x"
 LON_COL = "GPS_y"
 
-MAX_POINTS_PREVIEW = 8000
+EXCLUDE = {"Time","Seconds","Minutes","Hours","Year","Month","Day"}
+
+DEFAULT_SIGNALS = ["EEC1_Speed","Verbruik_g_per_km","GPS_speed"]
+
+MAX_POINTS_PREVIEW = 5000
 MAX_POINTS_GRAPH = 50000
 
 TIME_STEP = timedelta(minutes=1)
 
-DEFAULT_SIGNALS = ["EEC1_Speed","Verbruik_g_per_km","GPS_speed"]
-
-EXCLUDE = {"Time","Seconds","Minutes","Hours","Year","Month","Day"}
-
 PARQUET_URL = st.secrets["AZURE_BLOB_SAS_URL"]
 
-# -------------------------------------------------
+# =========================================================
 # DATASET
-# -------------------------------------------------
+# =========================================================
 
 @st.cache_resource
 def get_dataset():
@@ -83,36 +41,74 @@ def get_dataset():
         sas_token=sas_token
     )
 
-    return ds.dataset(path, filesystem=fs, format="parquet")
+    dataset = ds.dataset(
+        path,
+        filesystem=fs,
+        format="parquet"
+    )
 
-dataset = get_dataset()
+    return dataset, fs, path
 
-# -------------------------------------------------
-# SCHEMA
-# -------------------------------------------------
+
+dataset, fs, dataset_path = get_dataset()
+
+# =========================================================
+# METADATA TIME RANGE (SUPER SNEL)
+# =========================================================
 
 @st.cache_data
-def read_schema():
+def get_time_range():
 
-    schema = dataset.schema
-    names = schema.names
-    types = {f.name: f.type for f in schema}
+    parquet = pq.ParquetFile(dataset_path, filesystem=fs)
 
-    return names, types
+    min_ts = None
+    max_ts = None
 
-col_names, col_types = read_schema()
+    for i in range(parquet.metadata.num_row_groups):
+
+        rg = parquet.metadata.row_group(i)
+
+        col = rg.column(parquet.schema.get_field_index("Timestamp"))
+
+        stats = col.statistics
+
+        if stats is not None:
+
+            if min_ts is None or stats.min < min_ts:
+                min_ts = stats.min
+
+            if max_ts is None or stats.max > max_ts:
+                max_ts = stats.max
+
+    return pd.to_datetime(min_ts), pd.to_datetime(max_ts)
+
+
+min_time, max_time = get_time_range()
+
+# =========================================================
+# SCHEMA
+# =========================================================
+
+schema = dataset.schema
+
+col_names = schema.names
+col_types = {f.name: f.type for f in schema}
 
 required = ["Timestamp", LAT_COL, LON_COL]
 
-for r in required:
-    if r not in col_names:
-        st.error(f"Kolom ontbreekt: {r}")
-        st.stop()
+missing = [c for c in required if c not in col_names]
 
-def is_numeric(t):
+if missing:
+    st.error(f"Ontbrekende kolommen: {missing}")
+    st.stop()
 
-    s = str(t).lower()
-    return "int" in s or "float" in s or "double" in s
+
+def is_numeric(pa_type):
+
+    s = str(pa_type).lower()
+
+    return ("int" in s) or ("float" in s) or ("double" in s)
+
 
 signals = [
     c for c in col_names
@@ -121,73 +117,26 @@ signals = [
     and is_numeric(col_types[c])
 ]
 
-# -------------------------------------------------
-# SESSION STATE
-# -------------------------------------------------
-
-if "selected_signals" not in st.session_state:
-    st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
-
-# -------------------------------------------------
-# STREAMLIT
-# -------------------------------------------------
+# =========================================================
+# APP
+# =========================================================
 
 st.set_page_config(layout="wide")
 
-# -------------------------------------------------
-# LAYOUT 15 / 85
-# -------------------------------------------------
+st.title("Geo + signalen")
 
-left, right = st.columns([1,6])
+# =========================================================
+# PREVIEW
+# =========================================================
 
-# -------------------------------------------------
-# LEFT COLUMN (titel + signaalpaneel)
-# -------------------------------------------------
-
-with left:
-
-    st.title("Geo + Signalen")
-
-    st.markdown('<div class="signalpanel">', unsafe_allow_html=True)
-
-    preview_signal = st.selectbox("Preview", signals)
-
-    n_signals = st.number_input(
-        "Aantal",
-        min_value=1,
-        max_value=min(12,len(signals)),
-        value=3
-    )
-
-    selected = []
-
-    for i in range(n_signals):
-
-        if i < len(st.session_state.selected_signals):
-            default = st.session_state.selected_signals[i]
-        else:
-            default = signals[0]
-
-        s = st.selectbox(
-            f"S{i+1}",
-            signals,
-            index=signals.index(default)
-        )
-
-        selected.append(s)
-
-    st.session_state.selected_signals = selected
-
-    load_button = st.button("Laad")
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# -------------------------------------------------
-# PREVIEW DATA
-# -------------------------------------------------
+preview_signal = st.selectbox(
+    "Preview signaal",
+    signals,
+    index=0
+)
 
 @st.cache_data
-def load_preview(signal):
+def preview_sample(signal):
 
     scanner = dataset.scanner(
         columns=["Timestamp", signal],
@@ -195,82 +144,100 @@ def load_preview(signal):
         use_threads=True
     )
 
-    table = scanner.to_table()
+    table = scanner.head(MAX_POINTS_PREVIEW)
 
     df = table.to_pandas()
 
     df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 
-    df = df.sort_values("Timestamp")
-
-    if len(df) > MAX_POINTS_PREVIEW:
-
-        idx = np.linspace(0, len(df)-1, MAX_POINTS_PREVIEW).astype(int)
-        df = df.iloc[idx]
-
     return df
 
-preview_df = load_preview(preview_signal)
 
-min_time = preview_df["Timestamp"].min().to_pydatetime()
-max_time = preview_df["Timestamp"].max().to_pydatetime()
+preview_df = preview_sample(preview_signal)
 
-# -------------------------------------------------
-# RIGHT COLUMN
-# -------------------------------------------------
+# =========================================================
+# TIJDSELECTIE
+# =========================================================
 
-with right:
+start_dt, end_dt = st.slider(
+    "Tijdslot",
+    min_value=min_time.to_pydatetime(),
+    max_value=max_time.to_pydatetime(),
+    value=(
+        min_time.to_pydatetime(),
+        (min_time + timedelta(hours=1)).to_pydatetime()
+    ),
+    step=TIME_STEP
+)
 
-    start_dt, end_dt = st.slider(
-        "Tijdslot",
-        min_value=min_time,
-        max_value=max_time,
-        value=(min_time, min_time + timedelta(hours=1)),
-        step=TIME_STEP
+# =========================================================
+# PREVIEW GRAFIEK
+# =========================================================
+
+fig = go.Figure()
+
+fig.add_trace(
+    go.Scatter(
+        x=preview_df["Timestamp"],
+        y=preview_df[preview_signal],
+        mode="lines"
+    )
+)
+
+fig.add_vrect(
+    x0=start_dt,
+    x1=end_dt,
+    fillcolor="rgba(0,0,0,0.2)",
+    line_width=0
+)
+
+fig.update_layout(height=300)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# =========================================================
+# AANTAL SIGNALEN
+# =========================================================
+
+st.subheader("Aantal grafieken")
+
+n_signals = st.number_input(
+    "Aantal signalen",
+    min_value=1,
+    max_value=min(12, len(signals)),
+    value=3,
+    step=1
+)
+
+# =========================================================
+# SIGNAAL SELECTIE
+# =========================================================
+
+selected = []
+
+for i in range(n_signals):
+
+    default = DEFAULT_SIGNALS[i] if i < len(DEFAULT_SIGNALS) else signals[0]
+
+    s = st.selectbox(
+        f"Signaal {i+1}",
+        signals,
+        index=signals.index(default) if default in signals else 0
     )
 
-    fig = go.Figure()
+    selected.append(s)
 
-    fig.add_trace(
-        go.Scatter(
-            x=preview_df["Timestamp"],
-            y=preview_df[preview_signal],
-            mode="lines"
-        )
-    )
+# =========================================================
+# LOAD BUTTON
+# =========================================================
 
-    fig.add_vrect(
-        x0=start_dt,
-        x1=end_dt,
-        fillcolor="rgba(0,0,0,0.2)",
-        line_width=0
-    )
+load_data = st.button("Laad geselecteerd tijdslot")
 
-    fig.update_layout(
-        height=350,
-        margin=dict(l=10,r=10,t=20,b=10)
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-        start_date = st.date_input("Start datum", start_dt.date())
-        start_time = st.time_input("Start tijd", start_dt.time())
-
-    with c2:
-        end_date = st.date_input("Eind datum", end_dt.date())
-        end_time = st.time_input("Eind tijd", end_dt.time())
-
-    start_dt = datetime.combine(start_date, start_time)
-    end_dt = datetime.combine(end_date, end_time)
-
-# -------------------------------------------------
+# =========================================================
 # DATA LADEN
-# -------------------------------------------------
+# =========================================================
 
-if load_button:
+if load_data:
 
     cols = list(dict.fromkeys(["Timestamp", LAT_COL, LON_COL] + selected))
 
@@ -295,27 +262,15 @@ if load_button:
     if len(df) > MAX_POINTS_GRAPH:
 
         idx = np.linspace(0, len(df)-1, MAX_POINTS_GRAPH).astype(int)
+
         df = df.iloc[idx]
 
-    st.subheader("Geo")
+    for s in selected:
+        df[s] = pd.to_numeric(df[s], errors="coerce")
 
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scattermapbox(
-            lat=df[LAT_COL],
-            lon=df[LON_COL],
-            mode="markers",
-            marker=dict(size=6)
-        )
-    )
-
-    fig.update_layout(
-        mapbox_style="open-street-map",
-        height=700
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+    # =========================================================
+    # GRAFIEKEN
+    # =========================================================
 
     st.subheader("Grafieken")
 
@@ -331,15 +286,40 @@ if load_button:
             )
         )
 
-        fig.update_layout(title=s, height=250)
+        fig.update_layout(title=s, height=300)
 
         st.plotly_chart(fig, use_container_width=True)
 
-    csv = df.to_csv(index=False).encode()
+    # =========================================================
+    # CSV DOWNLOADS
+    # =========================================================
+
+    st.subheader("Downloads")
+
+    csv_signals = df.to_csv(index=False).encode()
 
     st.download_button(
-        "Download CSV",
-        csv,
-        file_name="export.csv",
+        "Download CSV geselecteerde signalen",
+        csv_signals,
+        file_name="signals_export.csv",
+        mime="text/csv"
+    )
+
+    # volledige dataset tijdslot
+
+    scanner_full = dataset.scanner(
+        filter=filter_expr,
+        batch_size=200000,
+        use_threads=True
+    )
+
+    df_full = scanner_full.to_table().to_pandas()
+
+    csv_full = df_full.to_csv(index=False).encode()
+
+    st.download_button(
+        "Download volledige dataset voor dit tijdslot",
+        csv_full,
+        file_name="full_timeslot_export.csv",
         mime="text/csv"
     )
