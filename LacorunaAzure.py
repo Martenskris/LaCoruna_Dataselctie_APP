@@ -15,9 +15,7 @@ LON_COL = "GPS_y"
 
 EXCLUDE = {"Time","Seconds","Minutes","Hours","Year","Month","Day"}
 
-MAX_POINTS_PREVIEW = 5000
-MAX_POINTS_GRAPH = 50000
-
+MAX_POINTS = 8000
 TIME_STEP = timedelta(minutes=1)
 
 DEFAULT_SIGNALS = ["EEC1_Speed","Verbruik_g_per_km","GPS_speed"]
@@ -76,6 +74,7 @@ if missing:
     st.error(f"Ontbrekende kolommen: {missing}")
     st.stop()
 
+
 def is_numeric(pa_type):
 
     s = str(pa_type).lower()
@@ -106,6 +105,7 @@ preview_signal = st.selectbox(
     "Preview signaal",
     signals,
     index=0,
+    key="preview_signal"
 )
 
 @st.cache_data
@@ -117,7 +117,7 @@ def preview_sample(signal):
         use_threads=True
     )
 
-    table = scanner.head(MAX_POINTS_PREVIEW)
+    table = scanner.head(MAX_POINTS)
 
     df = table.to_pandas()
 
@@ -136,17 +136,48 @@ max_time = preview_df["Timestamp"].max().to_pydatetime()
 # =========================================================
 
 if "start_dt" not in st.session_state:
-
     st.session_state.start_dt = min_time
     st.session_state.end_dt = min_time + timedelta(hours=1)
 
 if "data_loaded" not in st.session_state:
-
     st.session_state.data_loaded = False
 
 if "selected_signals" not in st.session_state:
-
     st.session_state.selected_signals = DEFAULT_SIGNALS.copy()
+
+# =========================================================
+# CALLBACKS
+# =========================================================
+
+def update_from_inputs():
+
+    start = datetime.combine(
+        st.session_state.start_date,
+        st.session_state.start_time
+    )
+
+    end = datetime.combine(
+        st.session_state.end_date,
+        st.session_state.end_time
+    )
+
+    st.session_state.start_dt = start
+    st.session_state.end_dt = end
+    st.session_state.time_slider = (start,end)
+
+
+def update_from_slider():
+
+    start,end = st.session_state.time_slider
+
+    st.session_state.start_dt = start
+    st.session_state.end_dt = end
+
+    st.session_state.start_date = start.date()
+    st.session_state.start_time = start.time()
+
+    st.session_state.end_date = end.date()
+    st.session_state.end_time = end.time()
 
 # =========================================================
 # TIJDSELECTIE
@@ -154,19 +185,61 @@ if "selected_signals" not in st.session_state:
 
 st.subheader("Tijdselectie")
 
-start_dt, end_dt = st.slider(
+c1,c2 = st.columns(2)
+
+with c1:
+
+    st.date_input(
+        "Start datum",
+        value=st.session_state.start_dt.date(),
+        key="start_date",
+        on_change=update_from_inputs
+    )
+
+    st.time_input(
+        "Start tijd",
+        value=st.session_state.start_dt.time(),
+        step=60,
+        key="start_time",
+        on_change=update_from_inputs
+    )
+
+with c2:
+
+    st.date_input(
+        "Eind datum",
+        value=st.session_state.end_dt.date(),
+        key="end_date",
+        on_change=update_from_inputs
+    )
+
+    st.time_input(
+        "Eind tijd",
+        value=st.session_state.end_dt.time(),
+        step=60,
+        key="end_time",
+        on_change=update_from_inputs
+    )
+
+# =========================================================
+# SLIDER
+# =========================================================
+
+st.slider(
     "Tijdslot",
     min_value=min_time,
     max_value=max_time,
-    value=(st.session_state.start_dt, st.session_state.end_dt),
-    step=TIME_STEP
+    value=(st.session_state.start_dt,st.session_state.end_dt),
+    step=TIME_STEP,
+    key="time_slider",
+    on_change=update_from_slider
 )
 
-st.session_state.start_dt = start_dt
-st.session_state.end_dt = end_dt
+start_dt = st.session_state.start_dt
+end_dt = st.session_state.end_dt
 
 # =========================================================
-# PREVIEW GRAFIEK
+# PREVIEW FIGUUR
 # =========================================================
 
 fig = go.Figure()
@@ -182,11 +255,11 @@ fig.add_trace(
 fig.add_vrect(
     x0=start_dt,
     x1=end_dt,
-    fillcolor="rgba(0,0,0,0.2)",
+    fillcolor="rgba(0,0,0,0.15)",
     line_width=0
 )
 
-fig.update_layout(height=300)
+fig.update_layout(height=320)
 
 st.plotly_chart(fig,use_container_width=True)
 
@@ -201,7 +274,8 @@ n_signals = st.number_input(
     min_value=1,
     max_value=min(12,len(signals)),
     value=3,
-    step=1
+    step=1,
+    key="num_signals"
 )
 
 # =========================================================
@@ -214,13 +288,16 @@ for i in range(n_signals):
 
     if i < len(st.session_state.selected_signals):
         default = st.session_state.selected_signals[i]
+    elif i < len(DEFAULT_SIGNALS) and DEFAULT_SIGNALS[i] in signals:
+        default = DEFAULT_SIGNALS[i]
     else:
         default = signals[0]
 
     s = st.selectbox(
         f"Signaal {i+1}",
         signals,
-        index=signals.index(default)
+        index=signals.index(default),
+        key=f"signal_select_{i}"
     )
 
     selected.append(s)
@@ -232,11 +309,10 @@ st.session_state.selected_signals = selected
 # =========================================================
 
 if st.button("Laad geselecteerd tijdslot"):
-
     st.session_state.data_loaded = True
 
 # =========================================================
-# DATA LADEN (ROW GROUP PRUNING)
+# DATA LADEN (SNEL)
 # =========================================================
 
 if st.session_state.data_loaded:
@@ -261,15 +337,7 @@ if st.session_state.data_loaded:
 
     df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 
-    # sampling voor snelle grafieken
-    if len(df) > MAX_POINTS_GRAPH:
-
-        idx = np.linspace(0,len(df)-1,MAX_POINTS_GRAPH).astype(int)
-
-        df = df.iloc[idx]
-
     for s in selected:
-
         df[s] = pd.to_numeric(df[s], errors="coerce")
 
     st.subheader("Grafieken")
@@ -292,7 +360,7 @@ if st.session_state.data_loaded:
 
     st.subheader("Download")
 
-    csv = df.to_csv(index=False).encode()
+    csv=df.to_csv(index=False).encode()
 
     st.download_button(
         "Download CSV",
