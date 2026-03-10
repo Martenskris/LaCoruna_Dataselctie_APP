@@ -4,7 +4,7 @@ import streamlit as st
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 import plotly.graph_objects as go
-from datetime import timedelta
+from datetime import timedelta, datetime
 import adlfs
 
 # =========================================================
@@ -41,11 +41,7 @@ def get_dataset():
         sas_token=sas_token
     )
 
-    dataset = ds.dataset(
-        path,
-        filesystem=fs,
-        format="parquet"
-    )
+    dataset = ds.dataset(path, filesystem=fs, format="parquet")
 
     return dataset, fs, path
 
@@ -53,7 +49,7 @@ def get_dataset():
 dataset, fs, dataset_path = get_dataset()
 
 # =========================================================
-# METADATA TIME RANGE (SUPER SNEL)
+# TIJDRANGE VIA METADATA
 # =========================================================
 
 @st.cache_data
@@ -105,7 +101,6 @@ if missing:
     st.error(f"Ontbrekende kolommen: {missing}")
     st.stop()
 
-
 def is_numeric(pa_type):
 
     s = str(pa_type).lower()
@@ -129,7 +124,7 @@ st.set_page_config(layout="wide")
 st.title("Geo + signalen")
 
 # =========================================================
-# PREVIEW
+# PREVIEW SIGNAAL
 # =========================================================
 
 preview_signal = st.selectbox(
@@ -137,6 +132,10 @@ preview_signal = st.selectbox(
     signals,
     index=0
 )
+
+# =========================================================
+# PREVIEW DATA
+# =========================================================
 
 @st.cache_data
 def preview_sample(signal):
@@ -162,14 +161,44 @@ preview_df = preview_sample(preview_signal)
 # TIJDSELECTIE
 # =========================================================
 
+st.subheader("Tijdselectie")
+
+c1,c2 = st.columns(2)
+
+start_date = c1.date_input(
+    "Start datum",
+    min_time.date()
+)
+
+start_time = c1.time_input(
+    "Start tijd",
+    min_time.time(),
+    step=60
+)
+
+end_date = c2.date_input(
+    "Eind datum",
+    min_time.date()
+)
+
+end_time = c2.time_input(
+    "Eind tijd",
+    (min_time + timedelta(hours=1)).time(),
+    step=60
+)
+
+start_dt = datetime.combine(start_date,start_time)
+end_dt = datetime.combine(end_date,end_time)
+
+# =========================================================
+# SLIDER
+# =========================================================
+
 start_dt, end_dt = st.slider(
     "Tijdslot",
     min_value=min_time.to_pydatetime(),
     max_value=max_time.to_pydatetime(),
-    value=(
-        min_time.to_pydatetime(),
-        (min_time + timedelta(hours=1)).to_pydatetime()
-    ),
+    value=(start_dt,end_dt),
     step=TIME_STEP
 )
 
@@ -196,7 +225,7 @@ fig.add_vrect(
 
 fig.update_layout(height=300)
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig,use_container_width=True)
 
 # =========================================================
 # AANTAL SIGNALEN
@@ -207,7 +236,7 @@ st.subheader("Aantal grafieken")
 n_signals = st.number_input(
     "Aantal signalen",
     min_value=1,
-    max_value=min(12, len(signals)),
+    max_value=min(12,len(signals)),
     value=3,
     step=1
 )
@@ -216,7 +245,7 @@ n_signals = st.number_input(
 # SIGNAAL SELECTIE
 # =========================================================
 
-selected = []
+selected=[]
 
 for i in range(n_signals):
 
@@ -242,7 +271,7 @@ load_data = st.button("Laad geselecteerd tijdslot")
 
 if load_data:
 
-    cols = list(dict.fromkeys(["Timestamp", LAT_COL, LON_COL] + selected))
+    cols = list(dict.fromkeys(["Timestamp",LAT_COL,LON_COL]+selected))
 
     filter_expr = (
         (ds.field("Timestamp") >= pd.Timestamp(start_dt)) &
@@ -264,11 +293,13 @@ if load_data:
 
     if len(df) > MAX_POINTS_GRAPH:
 
-        idx = np.linspace(0, len(df)-1, MAX_POINTS_GRAPH).astype(int)
+        idx = np.linspace(0,len(df)-1,MAX_POINTS_GRAPH).astype(int)
+
         df = df.iloc[idx]
 
     for s in selected:
-        df[s] = pd.to_numeric(df[s], errors="coerce")
+
+        df[s] = pd.to_numeric(df[s],errors="coerce")
 
     # =========================================================
     # GRAFIEKEN
@@ -288,12 +319,12 @@ if load_data:
             )
         )
 
-        fig.update_layout(title=s, height=300)
+        fig.update_layout(title=s,height=300)
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig,use_container_width=True)
 
     # =========================================================
-    # CSV DOWNLOADS
+    # DOWNLOADS
     # =========================================================
 
     st.subheader("Downloads")
