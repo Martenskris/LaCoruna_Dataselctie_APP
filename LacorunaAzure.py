@@ -61,24 +61,27 @@ def get_time_range():
 
     parquet = pq.ParquetFile(dataset_path, filesystem=fs)
 
+    schema_names = parquet.schema.names
+    ts_index = schema_names.index("Timestamp")
+
     min_ts = None
     max_ts = None
 
     for i in range(parquet.metadata.num_row_groups):
 
         rg = parquet.metadata.row_group(i)
-
-        col = rg.column(parquet.schema.get_field_index("Timestamp"))
+        col = rg.column(ts_index)
 
         stats = col.statistics
 
-        if stats is not None:
+        if stats is None:
+            continue
 
-            if min_ts is None or stats.min < min_ts:
-                min_ts = stats.min
+        if min_ts is None or stats.min < min_ts:
+            min_ts = stats.min
 
-            if max_ts is None or stats.max > max_ts:
-                max_ts = stats.max
+        if max_ts is None or stats.max > max_ts:
+            max_ts = stats.max
 
     return pd.to_datetime(min_ts), pd.to_datetime(max_ts)
 
@@ -262,7 +265,6 @@ if load_data:
     if len(df) > MAX_POINTS_GRAPH:
 
         idx = np.linspace(0, len(df)-1, MAX_POINTS_GRAPH).astype(int)
-
         df = df.iloc[idx]
 
     for s in selected:
@@ -304,8 +306,6 @@ if load_data:
         file_name="signals_export.csv",
         mime="text/csv"
     )
-
-    # volledige dataset tijdslot
 
     scanner_full = dataset.scanner(
         filter=filter_expr,
