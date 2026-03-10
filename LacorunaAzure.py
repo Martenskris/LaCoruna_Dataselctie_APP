@@ -15,24 +15,25 @@ st.set_page_config(layout="wide")
 st.markdown(
     """
     <style>
-    div[data-testid="stSelectbox"] label,
-    div[data-testid="stNumberInput"] label,
-    div[data-testid="stDateInput"] label,
-    div[data-testid="stTimeInput"] label {
-        font-size: 0.82rem !important;
+    section[data-testid="stSidebar"] label {
+        font-size: 0.80rem !important;
+        margin-bottom: 0.10rem !important;
+    }
+
+    section[data-testid="stSidebar"] div[data-testid="stSelectbox"] > div,
+    section[data-testid="stSidebar"] div[data-testid="stNumberInput"] > div,
+    section[data-testid="stSidebar"] div[data-testid="stDateInput"] > div,
+    section[data-testid="stSidebar"] div[data-testid="stTimeInput"] > div {
         margin-bottom: 0.15rem !important;
     }
 
-    div[data-testid="stSelectbox"] > div,
-    div[data-testid="stNumberInput"] > div,
-    div[data-testid="stDateInput"] > div,
-    div[data-testid="stTimeInput"] > div {
-        margin-bottom: 0.2rem !important;
+    section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+        min-height: 30px !important;
+        font-size: 0.80rem !important;
     }
 
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        min-height: 32px !important;
-        font-size: 0.82rem !important;
+    section[data-testid="stSidebar"] input {
+        font-size: 0.80rem !important;
     }
 
     .block-container {
@@ -52,9 +53,9 @@ LAT_COL = "GPS_x"
 LON_COL = "GPS_y"
 
 EXCLUDE = {"Time", "Seconds", "Minutes", "Hours", "Year", "Month", "Day"}
-
 TIME_STEP = timedelta(minutes=1)
 DEFAULT_SIGNALS = ["EEC1_Speed", "Verbruik_g_per_km", "GPS_speed"]
+
 PARQUET_URL = st.secrets["AZURE_BLOB_SAS_URL"]
 
 # =========================================================
@@ -120,13 +121,7 @@ if not signals:
     st.stop()
 
 # =========================================================
-# TITLE
-# =========================================================
-
-st.title("Geo + signalen")
-
-# =========================================================
-# PREVIEW DATA - VOLLEDIG SIGNAAL, GEEN DOWNSAMPLING
+# VOLLEDIGE PREVIEWDATA - GEEN DOWNSAMPLING
 # =========================================================
 
 @st.cache_data
@@ -211,19 +206,13 @@ def update_from_slider():
     st.session_state.end_time = end.time()
 
 # =========================================================
-# HOOFDLAYOUT 15 / 85
+# SIDEBAR
 # =========================================================
 
-left_col, right_col = st.columns([15, 85])
-
-# =========================================================
-# LINKERKOLOM: SIGNAALSELECTIE
-# =========================================================
-
-with left_col:
+with st.sidebar:
     st.subheader("Selectie")
 
-    preview_signal = st.selectbox(
+    st.selectbox(
         "Preview signaal",
         signals,
         index=signals.index(st.session_state.preview_signal) if st.session_state.preview_signal in signals else 0,
@@ -240,13 +229,12 @@ with left_col:
         key="num_signals",
     )
 
-    selected = []
-
     while len(st.session_state.selected_signals) < st.session_state.num_signals:
         st.session_state.selected_signals.append(signals[0])
 
     st.session_state.selected_signals = st.session_state.selected_signals[:st.session_state.num_signals]
 
+    selected = []
     for i in range(st.session_state.num_signals):
         default_signal = st.session_state.selected_signals[i]
         if default_signal not in signals:
@@ -264,108 +252,106 @@ with left_col:
 
     st.markdown("---")
 
+    st.date_input(
+        "Start datum",
+        value=st.session_state.start_dt.date(),
+        key="start_date",
+        on_change=update_from_inputs,
+    )
+
+    st.time_input(
+        "Start tijd",
+        value=st.session_state.start_dt.time(),
+        step=60,
+        key="start_time",
+        on_change=update_from_inputs,
+    )
+
+    st.date_input(
+        "Eind datum",
+        value=st.session_state.end_dt.date(),
+        key="end_date",
+        on_change=update_from_inputs,
+    )
+
+    st.time_input(
+        "Eind tijd",
+        value=st.session_state.end_dt.time(),
+        step=60,
+        key="end_time",
+        on_change=update_from_inputs,
+    )
+
     if st.button("Laad geselecteerd tijdslot", use_container_width=True):
         st.session_state.data_loaded = True
 
 # =========================================================
-# RECHTERKOLOM: PREVIEW + TIJDSELECTIE
+# MAIN
 # =========================================================
 
-with right_col:
-    st.subheader("Preview")
+st.title("Geo + signalen")
 
-    preview_df = load_full_signal(preview_signal)
+preview_signal = st.session_state.preview_signal
+preview_df = load_full_signal(preview_signal)
 
-    if preview_df.empty:
-        st.warning("Geen previewdata gevonden voor dit signaal.")
-        st.stop()
+if preview_df.empty:
+    st.warning("Geen previewdata gevonden voor dit signaal.")
+    st.stop()
 
-    min_time = preview_df["Timestamp"].min().to_pydatetime()
-    max_time = preview_df["Timestamp"].max().to_pydatetime()
+min_time = preview_df["Timestamp"].min().to_pydatetime()
+max_time = preview_df["Timestamp"].max().to_pydatetime()
 
-    if st.session_state.start_dt < min_time:
-        st.session_state.start_dt = min_time
-    if st.session_state.end_dt > max_time:
-        st.session_state.end_dt = max_time
-    if st.session_state.end_dt < st.session_state.start_dt:
-        st.session_state.end_dt = st.session_state.start_dt
+if st.session_state.start_dt < min_time:
+    st.session_state.start_dt = min_time
+if st.session_state.end_dt > max_time:
+    st.session_state.end_dt = max_time
+if st.session_state.end_dt < st.session_state.start_dt:
+    st.session_state.end_dt = st.session_state.start_dt
 
-    c1, c2 = st.columns(2)
+st.subheader("Preview")
 
-    with c1:
-        st.date_input(
-            "Start datum",
-            value=st.session_state.start_dt.date(),
-            key="start_date",
-            on_change=update_from_inputs,
-        )
+st.slider(
+    "Tijdslot",
+    min_value=min_time,
+    max_value=max_time,
+    value=(st.session_state.start_dt, st.session_state.end_dt),
+    step=TIME_STEP,
+    key="time_slider",
+    on_change=update_from_slider,
+)
 
-        st.time_input(
-            "Start tijd",
-            value=st.session_state.start_dt.time(),
-            step=60,
-            key="start_time",
-            on_change=update_from_inputs,
-        )
+start_dt = st.session_state.start_dt
+end_dt = st.session_state.end_dt
 
-    with c2:
-        st.date_input(
-            "Eind datum",
-            value=st.session_state.end_dt.date(),
-            key="end_date",
-            on_change=update_from_inputs,
-        )
+st.caption(f"Aantal punten in preview: {len(preview_df)}")
 
-        st.time_input(
-            "Eind tijd",
-            value=st.session_state.end_dt.time(),
-            step=60,
-            key="end_time",
-            on_change=update_from_inputs,
-        )
+fig = go.Figure()
 
-    st.slider(
-        "Tijdslot",
-        min_value=min_time,
-        max_value=max_time,
-        value=(st.session_state.start_dt, st.session_state.end_dt),
-        step=TIME_STEP,
-        key="time_slider",
-        on_change=update_from_slider,
+fig.add_trace(
+    go.Scatter(
+        x=preview_df["Timestamp"],
+        y=preview_df[preview_signal],
+        mode="lines",
+        name=preview_signal,
     )
+)
 
-    start_dt = st.session_state.start_dt
-    end_dt = st.session_state.end_dt
+fig.add_vrect(
+    x0=start_dt,
+    x1=end_dt,
+    fillcolor="rgba(0,0,0,0.15)",
+    line_width=0,
+)
 
-    st.caption(f"Aantal punten in preview: {len(preview_df)}")
+fig.update_layout(
+    title=f"Preview van {preview_signal}",
+    xaxis_title="Tijd",
+    yaxis_title=preview_signal,
+    height=500,
+    margin=dict(l=20, r=20, t=50, b=20),
+)
 
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=preview_df["Timestamp"],
-            y=preview_df[preview_signal],
-            mode="lines",
-            name=preview_signal,
-        )
-    )
-
-    fig.add_vrect(
-        x0=start_dt,
-        x1=end_dt,
-        fillcolor="rgba(0,0,0,0.15)",
-        line_width=0,
-    )
-
-    fig.update_layout(
-        title=f"Preview van {preview_signal}",
-        xaxis_title="Tijd",
-        yaxis_title=preview_signal,
-        height=420,
-        margin=dict(l=20, r=20, t=50, b=20),
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
 # DETAILDATA LADEN
